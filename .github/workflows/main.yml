@@ -12,42 +12,194 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # ==========================================
+      # 1. AMBIL SOURCE CODE
+      # ==========================================
       - name: Checkout
         uses: actions/checkout@v4
 
+
+      # ==========================================
+      # 2. EXTRACT PROJECT ANDROID
+      # ==========================================
       - name: Extract Android Project
+        shell: bash
         run: |
+          set -e
+
+          echo "======================================"
+          echo "EXTRACT ANDROID PROJECT"
+          echo "======================================"
+
           rm -rf android_project
           mkdir -p android_project
-          unzip -o KunjunganNasabah_Android_Project_FIX.zip -d android_project
 
+          unzip -o "KunjunganNasabah_Android_Project_FIX.zip" -d android_project
+
+          echo ""
+          echo "Isi hasil extract:"
+          find android_project -maxdepth 4 -type f | head -100
+
+          echo ""
+          echo "Mencari gradlew..."
+
+          GRADLEW_PATH=$(find android_project -type f -name "gradlew" -print -quit)
+
+          if [ -z "$GRADLEW_PATH" ]; then
+            echo ""
+            echo "ERROR: File gradlew tidak ditemukan!"
+            echo ""
+            echo "Struktur folder:"
+            find android_project -maxdepth 5 -print
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLEW_PATH")
+
+          echo ""
+          echo "gradlew ditemukan:"
+          echo "$GRADLEW_PATH"
+
+          echo ""
+          echo "Folder project Android:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+
+      # ==========================================
+      # 3. AKTIFKAN ANDROIDX
+      # ==========================================
       - name: Enable AndroidX
+        shell: bash
         run: |
-          touch android_project/gradle.properties
-          grep -q '^android.useAndroidX=' android_project/gradle.properties \
-            && sed -i 's/^android.useAndroidX=.*/android.useAndroidX=true/' android_project/gradle.properties \
-            || echo 'android.useAndroidX=true' >> android_project/gradle.properties
-          grep -q '^android.enableJetifier=' android_project/gradle.properties \
-            && sed -i 's/^android.enableJetifier=.*/android.enableJetifier=true/' android_project/gradle.properties \
-            || echo 'android.enableJetifier=true' >> android_project/gradle.properties
+          set -e
 
+          echo "Mengaktifkan AndroidX..."
+
+          touch "$PROJECT_DIR/gradle.properties"
+
+          if grep -q "^android.useAndroidX=" "$PROJECT_DIR/gradle.properties"; then
+            sed -i 's/^android.useAndroidX=.*/android.useAndroidX=true/' "$PROJECT_DIR/gradle.properties"
+          else
+            echo "android.useAndroidX=true" >> "$PROJECT_DIR/gradle.properties"
+          fi
+
+          if grep -q "^android.enableJetifier=" "$PROJECT_DIR/gradle.properties"; then
+            sed -i 's/^android.enableJetifier=.*/android.enableJetifier=true/' "$PROJECT_DIR/gradle.properties"
+          else
+            echo "android.enableJetifier=true" >> "$PROJECT_DIR/gradle.properties"
+          fi
+
+          echo ""
+          echo "Isi gradle.properties:"
+          cat "$PROJECT_DIR/gradle.properties"
+
+
+      # ==========================================
+      # 4. SETUP JAVA
+      # ==========================================
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+
+      # ==========================================
+      # 5. SETUP GRADLE
+      # ==========================================
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build APK
-        run: |
-          cd android_project
-          chmod +x gradlew
-          ./gradlew assembleDebug
 
+      # ==========================================
+      # 6. PERMISSION GRADLE
+      # ==========================================
+      - name: Prepare Gradle
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          chmod +x gradlew
+
+          echo "Gradle version:"
+          ./gradlew --version
+
+
+      # ==========================================
+      # 7. BUILD APK
+      # ==========================================
+      - name: Build APK
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "MEMBUAT APK"
+          echo "======================================"
+
+          cd "$PROJECT_DIR"
+
+          ./gradlew assembleDebug --stacktrace
+
+
+      # ==========================================
+      # 8. CEK HASIL APK
+      # ==========================================
+      - name: Find APK
+        shell: bash
+        run: |
+          echo "======================================"
+          echo "MENCARI APK"
+          echo "======================================"
+
+          echo ""
+          echo "Semua file APK yang ditemukan:"
+
+          find "$PROJECT_DIR" -type f -name "*.apk" -print
+
+          APK_PATH=$(find "$PROJECT_DIR" -type f -path "*/app/build/outputs/apk/debug/*.apk" -print -quit)
+
+          if [ -z "$APK_PATH" ]; then
+            echo ""
+            echo "ERROR: APK tidak ditemukan!"
+            echo ""
+            echo "Isi folder output:"
+            find "$PROJECT_DIR" -type f | grep -E "build|apk" || true
+            exit 1
+          fi
+
+          echo ""
+          echo "APK ditemukan:"
+          echo "$APK_PATH"
+
+          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
+
+
+      # ==========================================
+      # 9. UPLOAD APK
+      # ==========================================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: KunjunganNasabah-APK
-          path: android_project/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+
+
+      # ==========================================
+      # 10. SELESAI
+      # ==========================================
+      - name: Build Complete
+        shell: bash
+        run: |
+          echo ""
+          echo "======================================"
+          echo "BUILD APK BERHASIL"
+          echo "======================================"
+          echo ""
+          echo "APK siap didownload dari Artifacts."
