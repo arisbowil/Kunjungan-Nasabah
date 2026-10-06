@@ -18,7 +18,17 @@ jobs:
       - name: Extract Android Project
         run: |
           unzip -o KunjunganNasabah_Android_Project_FIX.zip -d android_project
-
+            - name: Enable AndroidX
+        run: |
+          if [ -f android_project/gradle.properties ]; then
+            sed -i 's/^android.useAndroidX=.*/android.useAndroidX=true/' android_project/gradle.properties
+            sed -i 's/^android.enableJetifier=.*/android.enableJetifier=true/' android_project/gradle.properties
+          else
+            touch android_project/gradle.properties
+          fi
+          grep -q '^android.useAndroidX=' android_project/gradle.properties || echo 'android.useAndroidX=true' >> android_project/gradle.properties
+          grep -q '^android.enableJetifier=' android_project/gradle.properties || echo 'android.enableJetifier=true' >> android_project/gradle.properties
+    
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
