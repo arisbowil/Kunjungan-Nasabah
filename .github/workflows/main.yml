@@ -14,7 +14,7 @@ jobs:
     steps:
 
       # ==========================================
-      # 1. AMBIL SOURCE CODE
+      # 1. CHECKOUT REPOSITORY
       # ==========================================
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,70 +35,84 @@ jobs:
           rm -rf android_project
           mkdir -p android_project
 
-          unzip -o "KunjunganNasabah_Android_Project_FIX.zip" -d android_project
+          unzip -o "KunjunganNasabah_Android_Project_FIX.zip" \
+            -d android_project
 
           echo ""
-          echo "Isi hasil extract:"
-          find android_project -maxdepth 4 -type f | head -100
+          echo "Struktur project:"
+          find android_project -maxdepth 5 -type f | sort
 
           echo ""
-          echo "Mencari gradlew..."
+          echo "Memeriksa project Android..."
 
-          GRADLEW_PATH=$(find android_project -type f -name "gradlew" -print -quit)
-
-          if [ -z "$GRADLEW_PATH" ]; then
-            echo ""
-            echo "ERROR: File gradlew tidak ditemukan!"
-            echo ""
-            echo "Struktur folder:"
-            find android_project -maxdepth 5 -print
+          if [ ! -f "android_project/settings.gradle" ] && \
+             [ ! -f "android_project/settings.gradle.kts" ]; then
+            echo "ERROR: settings.gradle tidak ditemukan!"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLEW_PATH")
+          if [ ! -d "android_project/app" ]; then
+            echo "ERROR: folder app tidak ditemukan!"
+            exit 1
+          fi
 
           echo ""
-          echo "gradlew ditemukan:"
-          echo "$GRADLEW_PATH"
+          echo "Project Android ditemukan."
 
-          echo ""
-          echo "Folder project Android:"
-          echo "$PROJECT_DIR"
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "PROJECT_DIR=$GITHUB_WORKSPACE/android_project" >> "$GITHUB_ENV"
 
 
       # ==========================================
-      # 3. AKTIFKAN ANDROIDX
+      # 3. ENABLE ANDROIDX
       # ==========================================
       - name: Enable AndroidX
         shell: bash
         run: |
           set -e
 
-          echo "Mengaktifkan AndroidX..."
+          echo "======================================"
+          echo "ENABLE ANDROIDX"
+          echo "======================================"
 
           touch "$PROJECT_DIR/gradle.properties"
 
-          if grep -q "^android.useAndroidX=" "$PROJECT_DIR/gradle.properties"; then
-            sed -i 's/^android.useAndroidX=.*/android.useAndroidX=true/' "$PROJECT_DIR/gradle.properties"
+          if grep -q "^android.useAndroidX=" \
+            "$PROJECT_DIR/gradle.properties"; then
+
+            sed -i \
+              's/^android.useAndroidX=.*/android.useAndroidX=true/' \
+              "$PROJECT_DIR/gradle.properties"
+
           else
-            echo "android.useAndroidX=true" >> "$PROJECT_DIR/gradle.properties"
+
+            echo "android.useAndroidX=true" \
+              >> "$PROJECT_DIR/gradle.properties"
+
           fi
 
-          if grep -q "^android.enableJetifier=" "$PROJECT_DIR/gradle.properties"; then
-            sed -i 's/^android.enableJetifier=.*/android.enableJetifier=true/' "$PROJECT_DIR/gradle.properties"
+
+          if grep -q "^android.enableJetifier=" \
+            "$PROJECT_DIR/gradle.properties"; then
+
+            sed -i \
+              's/^android.enableJetifier=.*/android.enableJetifier=true/' \
+              "$PROJECT_DIR/gradle.properties"
+
           else
-            echo "android.enableJetifier=true" >> "$PROJECT_DIR/gradle.properties"
+
+            echo "android.enableJetifier=true" \
+              >> "$PROJECT_DIR/gradle.properties"
+
           fi
+
 
           echo ""
-          echo "Isi gradle.properties:"
+          echo "gradle.properties:"
           cat "$PROJECT_DIR/gradle.properties"
 
 
       # ==========================================
-      # 4. SETUP JAVA
+      # 4. SETUP JAVA 17
       # ==========================================
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -112,22 +126,23 @@ jobs:
       # ==========================================
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
 
 
       # ==========================================
-      # 6. PERMISSION GRADLE
+      # 6. CHECK GRADLE
       # ==========================================
-      - name: Prepare Gradle
+      - name: Check Gradle
         shell: bash
         run: |
           set -e
 
-          cd "$PROJECT_DIR"
+          echo "======================================"
+          echo "GRADLE VERSION"
+          echo "======================================"
 
-          chmod +x gradlew
-
-          echo "Gradle version:"
-          ./gradlew --version
+          gradle --version
 
 
       # ==========================================
@@ -139,39 +154,70 @@ jobs:
           set -e
 
           echo "======================================"
-          echo "MEMBUAT APK"
+          echo "BUILD ANDROID APK"
           echo "======================================"
 
           cd "$PROJECT_DIR"
 
-          ./gradlew assembleDebug --stacktrace
+          echo ""
+          echo "Project directory:"
+          pwd
+
+          echo ""
+          echo "Isi project:"
+          ls -la
+
+          echo ""
+          echo "Mulai Gradle..."
+
+          gradle \
+            --no-daemon \
+            --stacktrace \
+            assembleDebug
 
 
       # ==========================================
-      # 8. CEK HASIL APK
+      # 8. FIND APK
       # ==========================================
       - name: Find APK
         shell: bash
         run: |
+          set -e
+
           echo "======================================"
           echo "MENCARI APK"
           echo "======================================"
 
           echo ""
-          echo "Semua file APK yang ditemukan:"
+          echo "APK yang ditemukan:"
 
-          find "$PROJECT_DIR" -type f -name "*.apk" -print
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" \
+            -print
 
-          APK_PATH=$(find "$PROJECT_DIR" -type f -path "*/app/build/outputs/apk/debug/*.apk" -print -quit)
+
+          APK_PATH=$(find "$PROJECT_DIR" \
+            -type f \
+            -path "*/app/build/outputs/apk/debug/*.apk" \
+            -print -quit)
+
 
           if [ -z "$APK_PATH" ]; then
+
             echo ""
             echo "ERROR: APK tidak ditemukan!"
             echo ""
-            echo "Isi folder output:"
-            find "$PROJECT_DIR" -type f | grep -E "build|apk" || true
+            echo "Isi folder build:"
+            find "$PROJECT_DIR" \
+              -type f \
+              | grep -E "build|apk" \
+              || true
+
             exit 1
+
           fi
+
 
           echo ""
           echo "APK ditemukan:"
@@ -192,7 +238,7 @@ jobs:
 
 
       # ==========================================
-      # 10. SELESAI
+      # 10. BUILD SELESAI
       # ==========================================
       - name: Build Complete
         shell: bash
@@ -202,4 +248,7 @@ jobs:
           echo "BUILD APK BERHASIL"
           echo "======================================"
           echo ""
-          echo "APK siap didownload dari Artifacts."
+          echo "Nama artifact:"
+          echo "KunjunganNasabah-APK"
+          echo ""
+          echo "APK siap didownload."
