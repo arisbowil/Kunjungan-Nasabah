@@ -14,14 +14,14 @@ jobs:
     steps:
 
       # ==========================================
-      # 1. CHECKOUT REPOSITORY
+      # 1. CHECKOUT
       # ==========================================
       - name: Checkout
         uses: actions/checkout@v4
 
 
       # ==========================================
-      # 2. EXTRACT PROJECT ANDROID
+      # 2. EXTRACT ANDROID PROJECT
       # ==========================================
       - name: Extract Android Project
         shell: bash
@@ -33,6 +33,7 @@ jobs:
           echo "======================================"
 
           rm -rf android_project
+
           mkdir -p android_project
 
           unzip -o "KunjunganNasabah_Android_Project_FIX.zip" \
@@ -40,10 +41,7 @@ jobs:
 
           echo ""
           echo "Struktur project:"
-          find android_project -maxdepth 5 -type f | sort
-
-          echo ""
-          echo "Memeriksa project Android..."
+          find android_project -maxdepth 6 -type f | sort
 
           if [ ! -f "android_project/settings.gradle" ] && \
              [ ! -f "android_project/settings.gradle.kts" ]; then
@@ -112,7 +110,7 @@ jobs:
 
 
       # ==========================================
-      # 4. SETUP JAVA 17
+      # 4. SETUP JAVA
       # ==========================================
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -131,7 +129,37 @@ jobs:
 
 
       # ==========================================
-      # 6. CHECK GRADLE
+      # 6. CREATE KOTLIN FIX
+      # ==========================================
+      - name: Fix Kotlin Dependencies
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "FIX KOTLIN DUPLICATE DEPENDENCIES"
+          echo "======================================"
+
+          cat > "$GITHUB_WORKSPACE/kotlin-fix.gradle" <<'EOF'
+          allprojects {
+              configurations.configureEach {
+                  resolutionStrategy.eachDependency { details ->
+                      if (details.requested.group == "org.jetbrains.kotlin") {
+                          details.useVersion("1.8.22")
+                          details.because("Force all Kotlin libraries to the same version")
+                      }
+                  }
+              }
+          }
+          EOF
+
+          echo ""
+          echo "Kotlin resolution fix:"
+          cat "$GITHUB_WORKSPACE/kotlin-fix.gradle"
+
+
+      # ==========================================
+      # 7. CHECK GRADLE
       # ==========================================
       - name: Check Gradle
         shell: bash
@@ -146,7 +174,37 @@ jobs:
 
 
       # ==========================================
-      # 7. BUILD APK
+      # 8. SHOW KOTLIN DEPENDENCIES
+      # ==========================================
+      - name: Check Kotlin Dependencies
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          echo "======================================"
+          echo "KOTLIN DEPENDENCIES"
+          echo "======================================"
+
+          gradle \
+            --no-daemon \
+            --init-script "$GITHUB_WORKSPACE/kotlin-fix.gradle" \
+            :app:dependencies \
+            --configuration debugRuntimeClasspath \
+            > "$GITHUB_WORKSPACE/kotlin-dependencies.txt" \
+            || true
+
+          echo ""
+          echo "Kotlin dependency information:"
+          grep -i "kotlin" \
+            "$GITHUB_WORKSPACE/kotlin-dependencies.txt" \
+            | head -100 \
+            || true
+
+
+      # ==========================================
+      # 9. BUILD APK
       # ==========================================
       - name: Build APK
         shell: bash
@@ -164,20 +222,17 @@ jobs:
           pwd
 
           echo ""
-          echo "Isi project:"
-          ls -la
-
-          echo ""
           echo "Mulai Gradle..."
 
           gradle \
             --no-daemon \
             --stacktrace \
+            --init-script "$GITHUB_WORKSPACE/kotlin-fix.gradle" \
             assembleDebug
 
 
       # ==========================================
-      # 8. FIND APK
+      # 10. FIND APK
       # ==========================================
       - name: Find APK
         shell: bash
@@ -188,36 +243,27 @@ jobs:
           echo "MENCARI APK"
           echo "======================================"
 
-          echo ""
-          echo "APK yang ditemukan:"
-
-          find "$PROJECT_DIR" \
-            -type f \
-            -name "*.apk" \
-            -print
-
-
           APK_PATH=$(find "$PROJECT_DIR" \
             -type f \
             -path "*/app/build/outputs/apk/debug/*.apk" \
             -print -quit)
 
-
           if [ -z "$APK_PATH" ]; then
 
             echo ""
             echo "ERROR: APK tidak ditemukan!"
+
             echo ""
-            echo "Isi folder build:"
+            echo "Semua file APK:"
             find "$PROJECT_DIR" \
               -type f \
-              | grep -E "build|apk" \
+              -name "*.apk" \
+              -print \
               || true
 
             exit 1
 
           fi
-
 
           echo ""
           echo "APK ditemukan:"
@@ -227,7 +273,7 @@ jobs:
 
 
       # ==========================================
-      # 9. UPLOAD APK
+      # 11. UPLOAD APK
       # ==========================================
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -238,7 +284,7 @@ jobs:
 
 
       # ==========================================
-      # 10. BUILD SELESAI
+      # 12. SELESAI
       # ==========================================
       - name: Build Complete
         shell: bash
@@ -248,7 +294,7 @@ jobs:
           echo "BUILD APK BERHASIL"
           echo "======================================"
           echo ""
-          echo "Nama artifact:"
+          echo "Artifact:"
           echo "KunjunganNasabah-APK"
           echo ""
           echo "APK siap didownload."
