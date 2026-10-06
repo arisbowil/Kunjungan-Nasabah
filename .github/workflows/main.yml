@@ -15,9 +15,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-     - name: Extract Android Project
-     run: |
-    unzip -o KunjunganNasabah_Android_Project_FIX.zip -d android_project
+      - name: Extract Android Project
+        run: |
+          unzip -o KunjunganNasabah_Android_Project_FIX.zip -d android_project
 
       - name: Setup Java
         uses: actions/setup-java@v4
